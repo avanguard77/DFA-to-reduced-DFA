@@ -1,5 +1,6 @@
 ﻿#include <iostream>
 #include <list>
+struct Mane;
 using namespace std;
 
 struct State {
@@ -7,6 +8,8 @@ struct State {
 
     bool startState = false;
     bool finalState = false;
+
+    list<Mane> exit_Manes_To_Other_states;
 };
 
 struct Mane {
@@ -19,10 +22,19 @@ list<State> stateList;
 list<string> maneList;
 
 
+void Connect_State_Mane();
+
+void R(State);
+
 void InputGetter_State_Mane();
+
 
 int main() {
     InputGetter_State_Mane();
+    Connect_State_Mane();
+
+
+    return 0;
 }
 
 void InputGetter_State_Mane() {
@@ -57,7 +69,7 @@ void InputGetter_State_Mane() {
             State state;
             cout << "Is this state finialState ? ((yes/1)(no/0))   ";
             int finialStateChecked;
-            while (1) {
+            while (true) {
                 cin >> finialStateChecked;
                 if (finialStateChecked == 1) {
                     //final state
@@ -85,17 +97,62 @@ void InputGetter_State_Mane() {
         }
     }
 
-    cout << endl << endl<<"Please Enter the number of your Mane :";
+    cout << endl << endl << "Please Enter the number of your Mane :";
 
     int numberOfMane;
     cin >> numberOfMane;
-    cout<<endl<<endl;
+    cout << endl << endl;
 
     for (int i = 0; i < numberOfMane; i++) {
-        cout <<endl<< "Enter "<<(i+1)<<" Mane name :";
+        cout << endl << "Enter " << (i + 1) << " Mane name :";
         string maneinput;
         cin >> maneinput;
         maneList.push_back(maneinput);
-        cout<<endl<<"Mane are added "<<endl<<endl;
+        cout << endl << "Mane are added " << endl << endl;
+    }
+}
+
+void Connect_State_Mane() {
+    cout << endl << endl;
+    State this_state;
+    for (State state: stateList) {
+        if (state.startState) {
+            this_state = state;
+            cout << "startState is : " << this_state.statename << endl << endl;
+            R(this_state);
+        }
+    }
+
+    for (State thisState: stateList) {
+        if (!this_state.startState) {
+        }
+    }
+}
+
+void R(State state) {
+    list<string> maneList_for_thisState = maneList;
+
+    while (true) {
+        //if maneList_for_thisState is empty checked
+        if (maneList_for_thisState.empty()) {
+            break;
+        }
+        string maneinput;
+
+        cout << "which state should we connect" << endl;
+
+        for (string mane: maneList_for_thisState) {
+            cout << mane << endl;
+        }
+        // if maneinput is on the list
+        cin >> maneinput;
+        for (string mane: maneList_for_thisState) {
+
+            if (maneinput == mane) {
+                maneList_for_thisState.remove(maneinput);
+                break;
+            }
+            cout << "value Invalid" << endl;
+        }
     }
 }
