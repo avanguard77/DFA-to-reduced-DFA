@@ -1,5 +1,7 @@
 ﻿#include <iostream>
 #include <list>
+#include <algorithm>
+#include <ranges>
 struct Mane;
 using namespace std;
 
@@ -131,28 +133,57 @@ void Connect_State_Mane() {
 
 void R(State state) {
     list<string> maneList_for_thisState = maneList;
+    list<State> state_for_checking = stateList;
 
     while (true) {
-        //if maneList_for_thisState is empty checked
+        //empty checked
         if (maneList_for_thisState.empty()) {
-            break;
+            return;
         }
+
         string maneinput;
+        cout << "Which Mane do you choose?" << endl;
 
-        cout << "which state should we connect" << endl;
-
-        for (string mane: maneList_for_thisState) {
+        for (string mane : maneList_for_thisState) {
             cout << mane << endl;
         }
-        // if maneinput is on the list
-        cin >> maneinput;
-        for (string mane: maneList_for_thisState) {
 
-            if (maneinput == mane) {
-                maneList_for_thisState.remove(maneinput);
-                break;
-            }
-            cout << "value Invalid" << endl;
+        cin >> maneinput;
+        //checking invalid
+        auto maneIt = find(maneList_for_thisState.begin(), maneList_for_thisState.end(), maneinput);
+        if (maneIt == maneList_for_thisState.end()) {
+            cout << "Invalid Mane selection!" << endl;
+            continue;
         }
+        //setup Mane
+        Mane this_mane;
+        this_mane.name = maneinput;
+        this_mane.enteredstate = state;
+
+        cout << "Mane is selected: " << maneinput << endl;
+        cout << "Which State should we select by this Mane " << maneinput << " ?" << endl;
+
+        for (State this_state : state_for_checking) {
+            if (this_state.statename != state.statename) {
+                cout << this_state.statename << endl;
+            }
+        }
+
+        string stateinput;
+        cin >> stateinput;
+
+        auto stateIt = ranges::find_if(state_for_checking, [&stateinput](const State& this_state) {
+            return this_state.statename == stateinput;
+        });
+
+        if (stateIt == state_for_checking.end()) {
+            cout << "Invalid State selection!" << endl;
+            continue;  // Prevents proceeding with invalid state selection
+        }
+
+
+        this_mane.exitstate = *stateIt;
+        state.exit_Manes_To_Other_states.push_back(this_mane);
+        maneList_for_thisState.erase(maneIt);
     }
 }
