@@ -26,7 +26,7 @@ list<string> maneList;
 
 void Connect_State_Mane();
 
-void R(State);
+void Choosing_Mane_And_NextState(State);
 
 void InputGetter_State_Mane();
 
@@ -115,26 +115,30 @@ void InputGetter_State_Mane() {
 }
 
 void Connect_State_Mane() {
+    list<State> state_for_checking = stateList;
     cout << endl << endl;
-    State this_state;
-    for (State state: stateList) {
+
+    for (State state: state_for_checking) {
         if (state.startState) {
-            this_state = state;
-            cout << "startState is : " << this_state.statename << endl << endl;
-            R(this_state);
+            cout << "startState is : " << state.statename << endl << endl;
+            Choosing_Mane_And_NextState(state);
         }
     }
 
-    for (State thisState: stateList) {
-        if (!this_state.startState) {
+    for (State state: state_for_checking) {
+        if (!state.startState) {
+            cout << "this state is : " << state.statename << endl << endl;
+            Choosing_Mane_And_NextState(state);
         }
     }
 }
 
-void R(State state) {
+void Choosing_Mane_And_NextState(State state) {
     list<string> maneList_for_thisState = maneList;
     list<State> state_for_checking = stateList;
 
+
+    bool isStartStateCheckedforFirstTime = state.startState;
     while (true) {
         //empty checked
         if (maneList_for_thisState.empty()) {
@@ -142,13 +146,18 @@ void R(State state) {
         }
 
         string maneinput;
-        cout << "Which Mane do you choose?" << endl;
+        cout << "Which Mane do you choose?(for stoping and go for next state (//)\\in start state u should choose one )"
+                << endl << endl;
 
-        for (string mane : maneList_for_thisState) {
+        for (string mane: maneList_for_thisState) {
             cout << mane << endl;
         }
+        cout << endl;
 
         cin >> maneinput;
+        if (maneinput == "//" && !isStartStateCheckedforFirstTime) {
+            return;
+        }
         //checking invalid
         auto maneIt = find(maneList_for_thisState.begin(), maneList_for_thisState.end(), maneinput);
         if (maneIt == maneList_for_thisState.end()) {
@@ -163,27 +172,27 @@ void R(State state) {
         cout << "Mane is selected: " << maneinput << endl;
         cout << "Which State should we select by this Mane " << maneinput << " ?" << endl;
 
-        for (State this_state : state_for_checking) {
-            if (this_state.statename != state.statename) {
-                cout << this_state.statename << endl;
-            }
+        for (State this_state: state_for_checking) {
+            cout << this_state.statename << endl;
         }
 
         string stateinput;
         cin >> stateinput;
 
-        auto stateIt = ranges::find_if(state_for_checking, [&stateinput](const State& this_state) {
+        auto stateIt = ranges::find_if(state_for_checking, [&stateinput](const State &this_state) {
             return this_state.statename == stateinput;
         });
 
         if (stateIt == state_for_checking.end()) {
             cout << "Invalid State selection!" << endl;
-            continue;  // Prevents proceeding with invalid state selection
+            continue; // Prevents proceeding with invalid state selection
         }
-
 
         this_mane.exitstate = *stateIt;
         state.exit_Manes_To_Other_states.push_back(this_mane);
         maneList_for_thisState.erase(maneIt);
+        if (state.startState) {
+            isStartStateCheckedforFirstTime = false;
+        }
     }
 }
