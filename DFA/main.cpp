@@ -11,17 +11,31 @@ struct State {
     bool startState = false;
     bool finalState = false;
 
-    list<Mane> exit_Manes_To_Other_states;
+    list<Mane> *exit_Manes_To_Other_states;
+    
+    // Constructor to initialize the pointer
+    State() {
+        exit_Manes_To_Other_states = new list<Mane>();
+    }
+    
+    // Destructor to clean up
+    ~State() {
+        delete exit_Manes_To_Other_states;
+    }
 };
 
 struct Mane {
     string name;
-    State enteredstate;
-    State exitstate;
+    State *enteredstate;
+    State *exitstate;
 };
 
 list<State> stateList;
 list<string> maneList;
+
+bool State_Deleter(State *state);
+
+void DFA_Delete_Trap_UnuseableState();
 
 void DFA_SHow_Stucture();
 
@@ -36,14 +50,113 @@ int main() {
     InputGetter_State_Mane();
     Connect_State_Mane();
 
+
+    DFA_Delete_Trap_UnuseableState();
     DFA_SHow_Stucture();
     return 0;
+}
+
+bool State_Deleter(State *state) {
+    if (state->finalState) {
+        return true;
+    }
+
+    if (state->exit_Manes_To_Other_states->empty()) {
+        return false;
+    }
+
+    for (Mane &mane: *(state->exit_Manes_To_Other_states)) {
+        if (mane.exitstate != state && State_Deleter(mane.exitstate)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void DFA_Delete_Trap_UnuseableState() {
+    State *startState = nullptr;
+    for (State &state: stateList) {
+        if (state.startState) {
+            startState = &state;
+            break;
+        }
+    }
+
+    if (!startState) {
+        cout << "Error: No start state found!" << endl;
+        return;
+    }
+
+    if (startState->exit_Manes_To_Other_states->empty()) {
+        cout << endl << "DFA is incorrect: Start state has no transitions" << endl << endl;
+        return;
+    }
+
+    list<State *> trapStates;
+
+    cout << "\n=== Analyzing States for Trap Detection ===\n";
+
+    for (State &state: stateList) {
+        cout << "\nChecking state: " << state.statename;
+        if (state.startState) cout << " (Start State)";
+        if (state.finalState) cout << " (Final State)";
+        cout << endl;
+
+        if (!State_Deleter(&state)) {
+            trapStates.push_back(&state);
+            cout << "✗ State " << state.statename << " identified as trap state" << endl;
+            cout << "  Transitions from this state:" << endl;
+            if (state.exit_Manes_To_Other_states->empty()) {
+                cout << "  - No transitions (Dead end)" << endl;
+            } else {
+                for (const Mane &mane: *(state.exit_Manes_To_Other_states)) {
+                    cout << "  - " << state.statename << " --[" << mane.name << "]--> "
+                            << mane.exitstate->statename << endl;
+                }
+            }
+        } else {
+            cout << "✓ State " << state.statename << " is valid" << endl;
+        }
+    }
+
+    cout << "\n=== Removing Transitions to Trap States ===\n";
+
+    for (State &state: stateList) {
+        cout << "\nProcessing state: " << state.statename << endl;
+        auto it = state.exit_Manes_To_Other_states->begin();
+        while (it != state.exit_Manes_To_Other_states->end()) {
+            if (find(trapStates.begin(), trapStates.end(), it->exitstate) != trapStates.end()) {
+                cout << "- Removing transition: " << state.statename << " --[" << it->name << "]--> "
+                        << it->exitstate->statename << endl;
+                it = state.exit_Manes_To_Other_states->erase(it);
+            } else {
+                cout << "✓ Keeping transition: " << state.statename << " --[" << it->name << "]--> "
+                        << it->exitstate->statename << endl;
+                ++it;
+            }
+        }
+    }
+
+    cout << "\n=== Summary of Trap State Removal ===\n";
+    if (!trapStates.empty()) {
+        cout << "Removed " << trapStates.size() << " trap state(s):" << endl;
+        for (State *trapState: trapStates) {
+            cout << "- " << trapState->statename;
+            if (trapState->finalState) cout << " (Was Final State)";
+            if (trapState->startState) cout << " (Was Start State)";
+            cout << endl;
+        }
+    } else {
+        cout << "No trap states found in the DFA." << endl;
+    }
+    cout << "\n=== Trap State Removal Complete ===\n" << endl;
 }
 
 void DFA_SHow_Stucture() {
     cout << endl << "DFA Structure" << endl;
 
-    for (const State state: stateList) {
+    for (const State &state: stateList) {
         // Print state information
         cout << endl << "State: " << state.statename;
         if (state.finalState) cout << " (Final State)";
@@ -52,12 +165,12 @@ void DFA_SHow_Stucture() {
 
         // Print transitions
         cout << "Mane :" << endl;
-        for (const Mane mane: state.exit_Manes_To_Other_states) {
+        for (const Mane &mane: *(state.exit_Manes_To_Other_states)) {
             cout << "  " << state.statename << "[" << mane.name << "]> "
-                    << mane.exitstate.statename << endl;
+                    << mane.exitstate->statename << endl;
         }
 
-        if (state.exit_Manes_To_Other_states.empty()) {
+        if (state.exit_Manes_To_Other_states->empty()) {
             cout << "  (No Mane)" << endl;
         }
         cout << endl << endl;
@@ -163,7 +276,6 @@ void Choosing_Mane_And_NextState(State &state) {
 
     bool isStartStateCheckedforFirstTime = state.startState;
     while (true) {
-        //empty checked
         if (maneList_for_thisState.empty()) {
             return;
         }
@@ -181,20 +293,21 @@ void Choosing_Mane_And_NextState(State &state) {
         if (maneinput == "//" && !isStartStateCheckedforFirstTime) {
             return;
         }
-        //checking invalid
+
         auto maneIt = find(maneList_for_thisState.begin(), maneList_for_thisState.end(), maneinput);
         if (maneIt == maneList_for_thisState.end()) {
             cout << "Invalid Mane selection!" << endl;
             continue;
         }
-        //setup Mane
+
         Mane this_mane;
         this_mane.name = maneinput;
+        this_mane.enteredstate = &state;
 
         cout << "Mane is selected: " << maneinput << endl;
         cout << "Which State should we select by this Mane " << maneinput << " ?" << endl;
 
-        for (State this_state: state_for_checking) {
+        for (State &this_state: state_for_checking) {
             cout << this_state.statename << endl;
         }
 
@@ -210,9 +323,8 @@ void Choosing_Mane_And_NextState(State &state) {
             continue;
         }
 
-        this_mane.enteredstate = state;
-        this_mane.exitstate = *stateIt;
-        state.exit_Manes_To_Other_states.push_back(this_mane);
+        this_mane.exitstate = &(*stateIt);
+        state.exit_Manes_To_Other_states->push_back(this_mane);
         maneList_for_thisState.erase(maneIt);
         if (state.startState) {
             isStartStateCheckedforFirstTime = false;
