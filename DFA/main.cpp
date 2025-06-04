@@ -23,10 +23,11 @@ struct Mane {
 list<State> stateList;
 list<string> maneList;
 
+void DFA_SHow_Stucture();
 
 void Connect_State_Mane();
 
-void Choosing_Mane_And_NextState(State);
+void Choosing_Mane_And_NextState(State &state);
 
 void InputGetter_State_Mane();
 
@@ -35,8 +36,32 @@ int main() {
     InputGetter_State_Mane();
     Connect_State_Mane();
 
-
+    DFA_SHow_Stucture();
     return 0;
+}
+
+void DFA_SHow_Stucture() {
+    cout << endl << "DFA Structure" << endl;
+
+    for (const State state: stateList) {
+        // Print state information
+        cout << endl << "State: " << state.statename;
+        if (state.finalState) cout << " (Final State)";
+        else cout << " (Not Final State)";
+        cout << endl;
+
+        // Print transitions
+        cout << "Mane :" << endl;
+        for (const Mane mane: state.exit_Manes_To_Other_states) {
+            cout << "  " << state.statename << "[" << mane.name << "]> "
+                    << mane.exitstate.statename << endl;
+        }
+
+        if (state.exit_Manes_To_Other_states.empty()) {
+            cout << "  (No Mane)" << endl;
+        }
+        cout << endl << endl;
+    }
 }
 
 void InputGetter_State_Mane() {
@@ -115,17 +140,16 @@ void InputGetter_State_Mane() {
 }
 
 void Connect_State_Mane() {
-    list<State> state_for_checking = stateList;
     cout << endl << endl;
 
-    for (State state: state_for_checking) {
+    for (State &state: stateList) {
         if (state.startState) {
             cout << "startState is : " << state.statename << endl << endl;
             Choosing_Mane_And_NextState(state);
         }
     }
 
-    for (State state: state_for_checking) {
+    for (State &state: stateList) {
         if (!state.startState) {
             cout << "this state is : " << state.statename << endl << endl;
             Choosing_Mane_And_NextState(state);
@@ -133,10 +157,9 @@ void Connect_State_Mane() {
     }
 }
 
-void Choosing_Mane_And_NextState(State state) {
+void Choosing_Mane_And_NextState(State &state) {
     list<string> maneList_for_thisState = maneList;
-    list<State> state_for_checking = stateList;
-
+    list<State> &state_for_checking = stateList;
 
     bool isStartStateCheckedforFirstTime = state.startState;
     while (true) {
@@ -167,7 +190,6 @@ void Choosing_Mane_And_NextState(State state) {
         //setup Mane
         Mane this_mane;
         this_mane.name = maneinput;
-        this_mane.enteredstate = state;
 
         cout << "Mane is selected: " << maneinput << endl;
         cout << "Which State should we select by this Mane " << maneinput << " ?" << endl;
@@ -185,9 +207,10 @@ void Choosing_Mane_And_NextState(State state) {
 
         if (stateIt == state_for_checking.end()) {
             cout << "Invalid State selection!" << endl;
-            continue; // Prevents proceeding with invalid state selection
+            continue;
         }
 
+        this_mane.enteredstate = state;
         this_mane.exitstate = *stateIt;
         state.exit_Manes_To_Other_states.push_back(this_mane);
         maneList_for_thisState.erase(maneIt);
