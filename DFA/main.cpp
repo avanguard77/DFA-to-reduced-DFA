@@ -16,42 +16,48 @@ struct State {
 
 struct Mane {
     string name;
-    State* enteredstate;
-    State* exitstate;
+    State *enteredstate;
+    State *exitstate;
 };
 
 list<State> stateList;
 list<string> maneList;
 
-bool State_Deleter(State* state, list<State*>& visited);
+bool State_Deleter(State *state, list<State *> &visited);
 
 void DFA_Delete_Trap_UnuseableState();
 
 void DFA_SHow_Stucture();
 
-void DFA_SHow_Stucture(State* state, list<State*> visited = list<State*>());
+void DFA_SHow_Stucture(State *state, list<State *> visited = list<State *>());
 
 void Connect_State_Mane();
 
-void Choosing_Mane_And_NextState(State& state);
+void Choosing_Mane_And_NextState(State &state);
 
 void InputGetter_State_Mane();
 
+void DFA_TO_ReducedDFA(State *state);
 
 int main() {
     InputGetter_State_Mane();
     Connect_State_Mane();
 
     DFA_Delete_Trap_UnuseableState();
+    State *startState;
     for (State state: stateList) {
         if (state.startState) {
-            State *startState = &state;
+            startState = &state;
             DFA_SHow_Stucture(startState);
         }
     }
+
+    DFA_TO_ReducedDFA(startState);
+
     return 0;
 }
-bool State_Deleter(State* state, list<State*>& visited) {
+
+bool State_Deleter(State *state, list<State *> &visited) {
     if (find(visited.begin(), visited.end(), state) != visited.end()) {
         return false;
     }
@@ -65,10 +71,9 @@ bool State_Deleter(State* state, list<State*>& visited) {
         return false;
     }
 
-    for (const Mane& mane : *(state->exit_Manes_To_Other_states)) {
-
+    for (const Mane &mane: *(state->exit_Manes_To_Other_states)) {
         if (mane.exitstate != state) {
-            list<State*> newVisited = visited;
+            list<State *> newVisited = visited;
             if (State_Deleter(mane.exitstate, newVisited)) {
                 return true;
             }
@@ -79,9 +84,8 @@ bool State_Deleter(State* state, list<State*>& visited) {
 }
 
 void DFA_Delete_Trap_UnuseableState() {
-
-    State* startState = nullptr;
-    for (State& state : stateList) {
+    State *startState = nullptr;
+    for (State &state: stateList) {
         if (state.startState) {
             startState = &state;
             break;
@@ -98,21 +102,21 @@ void DFA_Delete_Trap_UnuseableState() {
         return;
     }
 
-    list<State*> trapStates;
+    list<State *> trapStates;
     cout << "\n=== Analyzing States for Trap Detection ===\n";
 
-    list<State*> allStates;
-    for (State& state : stateList) {
+    list<State *> allStates;
+    for (State &state: stateList) {
         allStates.push_back(&state);
     }
 
-    for (State* state : allStates) {
+    for (State *state: allStates) {
         cout << "\nChecking state: " << state->statename;
         if (state->startState) cout << " (Start State)";
         if (state->finalState) cout << " (Final State)";
         cout << endl;
 
-        list<State*> visited;
+        list<State *> visited;
         if (!State_Deleter(state, visited)) {
             trapStates.push_back(state);
             cout << "✗ State " << state->statename << " identified as trap state" << endl;
@@ -120,9 +124,9 @@ void DFA_Delete_Trap_UnuseableState() {
             if (state->exit_Manes_To_Other_states->empty()) {
                 cout << "  - No transitions (Dead end)" << endl;
             } else {
-                for (const Mane& mane : *(state->exit_Manes_To_Other_states)) {
+                for (const Mane &mane: *(state->exit_Manes_To_Other_states)) {
                     cout << "  - " << state->statename << " --[" << mane.name << "]--> "
-                         << mane.exitstate->statename << endl;
+                            << mane.exitstate->statename << endl;
                 }
             }
         } else {
@@ -132,29 +136,29 @@ void DFA_Delete_Trap_UnuseableState() {
 
     cout << "\n=== Removing Transitions to Trap States ===\n";
 
-    for (State* state : allStates) {
+    for (State *state: allStates) {
         cout << "\nProcessing state: " << state->statename << endl;
 
         list<Mane> validTransitions;
-        
-        for (const Mane& mane : *(state->exit_Manes_To_Other_states)) {
+
+        for (const Mane &mane: *(state->exit_Manes_To_Other_states)) {
             if (find(trapStates.begin(), trapStates.end(), mane.exitstate) == trapStates.end()) {
                 cout << "✓ Keeping transition: " << state->statename << " --[" << mane.name << "]--> "
-                     << mane.exitstate->statename << endl;
+                        << mane.exitstate->statename << endl;
                 validTransitions.push_back(mane);
             } else {
                 cout << "- Removing transition: " << state->statename << " --[" << mane.name << "]--> "
-                     << mane.exitstate->statename << endl;
+                        << mane.exitstate->statename << endl;
             }
         }
-        
+
         *(state->exit_Manes_To_Other_states) = validTransitions;
     }
 
     cout << "\n=== Summary of Trap State Removal ===\n";
     if (!trapStates.empty()) {
         cout << "Found " << trapStates.size() << " trap state(s):" << endl;
-        for (State* trapState : trapStates) {
+        for (State *trapState: trapStates) {
             cout << "- " << trapState->statename;
             if (trapState->finalState) cout << " (Was Final State)";
             if (trapState->startState) cout << " (Was Start State)";
@@ -169,7 +173,7 @@ void DFA_Delete_Trap_UnuseableState() {
 void DFA_SHow_Stucture() {
     cout << endl << "DFA Structure" << endl;
 
-    for (const State& state : stateList) {
+    for (const State &state: stateList) {
         // Print state information
         cout << endl << "State: " << state.statename;
         if (state.finalState) cout << " (Final State)";
@@ -179,9 +183,9 @@ void DFA_SHow_Stucture() {
         // Print transitions
         cout << "Mane :" << endl;
         if (state.exit_Manes_To_Other_states != nullptr) {
-            for (const Mane& mane : *state.exit_Manes_To_Other_states) {
+            for (const Mane &mane: *state.exit_Manes_To_Other_states) {
                 cout << "  " << state.statename << "[" << mane.name << "]> "
-                     << mane.exitstate->statename << endl;
+                        << mane.exitstate->statename << endl;
             }
 
             if (state.exit_Manes_To_Other_states->empty()) {
@@ -290,7 +294,7 @@ void Connect_State_Mane() {
     }
 }
 
-void Choosing_Mane_And_NextState(State& state) {
+void Choosing_Mane_And_NextState(State &state) {
     list<string> maneList_for_thisState = maneList;
 
     bool isStartStateCheckedforFirstTime = state.startState;
@@ -301,9 +305,9 @@ void Choosing_Mane_And_NextState(State& state) {
 
         string maneinput;
         cout << "Which Mane do you choose?(for stoping and go for next state (//)\\in start state u should choose one )"
-             << endl << endl;
+                << endl << endl;
 
-        for (const string& mane : maneList_for_thisState) {
+        for (const string &mane: maneList_for_thisState) {
             cout << mane << endl;
         }
         cout << endl;
@@ -325,14 +329,14 @@ void Choosing_Mane_And_NextState(State& state) {
         cout << "Mane is selected: " << maneinput << endl;
         cout << "Which State should we select by this Mane " << maneinput << " ?" << endl;
 
-        for (const State& this_state : stateList) {
+        for (const State &this_state: stateList) {
             cout << this_state.statename << endl;
         }
 
         string stateinput;
         cin >> stateinput;
 
-        auto stateIt = ranges::find_if(stateList, [&stateinput](const State& this_state) {
+        auto stateIt = ranges::find_if(stateList, [&stateinput](const State &this_state) {
             return this_state.statename == stateinput;
         });
 
@@ -352,45 +356,61 @@ void Choosing_Mane_And_NextState(State& state) {
     }
 }
 
-void DFA_SHow_Stucture(State* state, list<State*> visited) {
+void DFA_SHow_Stucture(State *state, list<State *> visited) {
     if (!state) {
         cout << "\nError: Invalid state pointer";
         return;
     }
 
     if (find(visited.begin(), visited.end(), state) != visited.end()) {
-        cout << " -> " << state->statename << " (cycle detected)";
+        cout << " -> " << state->statename << " cycle detected  " << endl;
         return;
     }
     visited.push_back(state);
 
-    cout << "\n" << string(visited.size() * 2, ' ') << "State: " << state->statename;
+    cout << "\n" << string(visited.size() * 2, ' ') << "State: " << state->statename << endl;
     if (state->startState) cout << " (Start)";
     if (state->finalState) cout << " (Final)";
 
     if (!state->exit_Manes_To_Other_states) {
-        cout << "\n" << string(visited.size() * 2, ' ') << "Error: No transition list";
+        cout << "\n" << string(visited.size() * 2, ' ') << "Error: No transition list" << endl;
         return;
     }
 
     if (state->exit_Manes_To_Other_states->empty()) {
-        cout << "\n" << string(visited.size() * 2, ' ') << "No outgoing transitions";
+        cout << "\n" << string(visited.size() * 2, ' ') << "No outgoing transitions" << endl;
         return;
     }
 
-    for (const Mane& mane : *(state->exit_Manes_To_Other_states)) {
-        cout << "\n" << string(visited.size() * 2, ' ') 
-             << "├─[" << mane.name << "]─> " << mane.exitstate->statename;
+    for (const Mane &mane: *(state->exit_Manes_To_Other_states)) {
+        cout << "\n" << string(visited.size() * 2, ' ')
+                << "  " << mane.name << "--> " << mane.exitstate->statename;
         DFA_SHow_Stucture(mane.exitstate, visited);
     }
 }
 
-void DFA_TO_ReducedDFA(State* state) {
 
+void DFA_TO_ReducedDFA(State *state) {
+    list<pair<string, string> > allTople;
+
+    for (auto it1 = stateList.begin(); it1 != stateList.end(); ++it1) {
+        auto it2 = it1;
+        ++it2;
+        while (it2 != stateList.end()) {
+            allTople.push_back({it1->statename, it2->statename});
+            ++it2;
+        }
+    }
+
+    // Show the pairs
+    for (const auto &pair: allTople) {
+        cout << pair.first << pair.second << " ";
+    }
+    cout << endl;
 }
 
 void cleanup() {
-    for (State& state : stateList) {
+    for (State &state: stateList) {
         delete state.exit_Manes_To_Other_states;
     }
 }
