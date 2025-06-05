@@ -37,7 +37,7 @@ void Choosing_Mane_And_NextState(State &state);
 
 void InputGetter_State_Mane();
 
-void DFA_TO_ReducedDFA(State *state);
+void DFA_TO_ReducedDFA();
 
 int main() {
     InputGetter_State_Mane();
@@ -52,7 +52,7 @@ int main() {
         }
     }
 
-    DFA_TO_ReducedDFA(startState);
+    DFA_TO_ReducedDFA();
 
     return 0;
 }
@@ -399,9 +399,11 @@ void DFA_SHow_Stucture(State *state, list<State *> visited) {
 }
 
 
-void DFA_TO_ReducedDFA(State *state) {
-    list<pair<string, string> > allTople;
-
+void DFA_TO_ReducedDFA() {
+    list<pair<string, string>> allTople;
+    list<pair<string, string>> deletedTople;
+    
+    // First create all possible pairs
     for (auto it1 = stateList.begin(); it1 != stateList.end(); ++it1) {
         auto it2 = it1;
         ++it2;
@@ -411,8 +413,40 @@ void DFA_TO_ReducedDFA(State *state) {
         }
     }
 
-    // Show the pairs
+    // Show initial pairs
+    cout << "\nInitial all pairs: ";
     for (const auto &pair: allTople) {
+        cout << pair.first << pair.second << " ";
+    }
+    cout << endl;
+
+    // Now filter based on final states
+    list<pair<string, string>> newAllTople;
+    for (const auto &pair: allTople) {
+        // Find the actual states to check their final status
+        auto state1 = find_if(stateList.begin(), stateList.end(),
+            [&pair](const State &s) { return s.statename == pair.first; });
+        auto state2 = find_if(stateList.begin(), stateList.end(),
+            [&pair](const State &s) { return s.statename == pair.second; });
+        
+        if (state1->finalState != state2->finalState) {
+            deletedTople.push_back(pair);
+        } else {
+            newAllTople.push_back(pair);
+        }
+    }
+    allTople = newAllTople;
+
+    // Show results after filtering
+    cout << "\nAfter checking final states:" << endl;
+    cout << "Remaining pairs: ";
+    for (const auto &pair: allTople) {
+        cout << pair.first << pair.second << " ";
+    }
+    cout << endl;
+    
+    cout << "Deleted pairs: ";
+    for (const auto &pair: deletedTople) {
         cout << pair.first << pair.second << " ";
     }
     cout << endl;
