@@ -164,6 +164,15 @@ void DFA_Delete_Trap_UnuseableState() {
             if (trapState->startState) cout << " (Was Start State)";
             cout << endl;
         }
+
+        // Remove trap states from stateList
+        stateList.remove_if([&trapStates](const State& state) {
+            return std::find_if(trapStates.begin(), trapStates.end(),
+                [&state](const State* trap) { return trap->statename == state.statename; }
+            ) != trapStates.end();
+        });
+        
+        cout << "\nTrap states have been removed from the DFA." << endl;
     } else {
         cout << "No trap states found in the DFA." << endl;
     }
