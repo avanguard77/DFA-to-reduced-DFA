@@ -23,7 +23,13 @@ struct Mane {
 list<State> stateList;
 list<string> maneList;
 
+bool State_Deleter(State* state, list<State*>& visited);
+
+void DFA_Delete_Trap_UnuseableState();
+
 void DFA_SHow_Stucture();
+
+void DFA_SHow_Stucture(State* state, list<State*> visited = list<State*>());
 
 void Connect_State_Mane();
 
@@ -36,8 +42,128 @@ int main() {
     InputGetter_State_Mane();
     Connect_State_Mane();
 
-    DFA_SHow_Stucture();
+    DFA_Delete_Trap_UnuseableState();
+    for (State state: stateList) {
+        if (state.startState) {
+            State *startState = &state;
+            DFA_SHow_Stucture(startState);
+        }
+    }
     return 0;
+}
+bool State_Deleter(State* state, list<State*>& visited) {
+    if (find(visited.begin(), visited.end(), state) != visited.end()) {
+        return false;
+    }
+    visited.push_back(state);
+
+    if (state->finalState) {
+        return true;
+    }
+
+    if (state->exit_Manes_To_Other_states->empty()) {
+        return false;
+    }
+
+    for (const Mane& mane : *(state->exit_Manes_To_Other_states)) {
+
+        if (mane.exitstate != state) {
+            list<State*> newVisited = visited;
+            if (State_Deleter(mane.exitstate, newVisited)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+void DFA_Delete_Trap_UnuseableState() {
+
+    State* startState = nullptr;
+    for (State& state : stateList) {
+        if (state.startState) {
+            startState = &state;
+            break;
+        }
+    }
+
+    if (!startState) {
+        cout << "Error: No start state found!" << endl;
+        return;
+    }
+
+    if (startState->exit_Manes_To_Other_states->empty()) {
+        cout << endl << "DFA is incorrect: Start state has no transitions" << endl << endl;
+        return;
+    }
+
+    list<State*> trapStates;
+    cout << "\n=== Analyzing States for Trap Detection ===\n";
+
+    list<State*> allStates;
+    for (State& state : stateList) {
+        allStates.push_back(&state);
+    }
+
+    for (State* state : allStates) {
+        cout << "\nChecking state: " << state->statename;
+        if (state->startState) cout << " (Start State)";
+        if (state->finalState) cout << " (Final State)";
+        cout << endl;
+
+        list<State*> visited;
+        if (!State_Deleter(state, visited)) {
+            trapStates.push_back(state);
+            cout << "✗ State " << state->statename << " identified as trap state" << endl;
+            cout << "  Transitions from this state:" << endl;
+            if (state->exit_Manes_To_Other_states->empty()) {
+                cout << "  - No transitions (Dead end)" << endl;
+            } else {
+                for (const Mane& mane : *(state->exit_Manes_To_Other_states)) {
+                    cout << "  - " << state->statename << " --[" << mane.name << "]--> "
+                         << mane.exitstate->statename << endl;
+                }
+            }
+        } else {
+            cout << "✓ State " << state->statename << " is valid" << endl;
+        }
+    }
+
+    cout << "\n=== Removing Transitions to Trap States ===\n";
+
+    for (State* state : allStates) {
+        cout << "\nProcessing state: " << state->statename << endl;
+
+        list<Mane> validTransitions;
+        
+        for (const Mane& mane : *(state->exit_Manes_To_Other_states)) {
+            if (find(trapStates.begin(), trapStates.end(), mane.exitstate) == trapStates.end()) {
+                cout << "✓ Keeping transition: " << state->statename << " --[" << mane.name << "]--> "
+                     << mane.exitstate->statename << endl;
+                validTransitions.push_back(mane);
+            } else {
+                cout << "- Removing transition: " << state->statename << " --[" << mane.name << "]--> "
+                     << mane.exitstate->statename << endl;
+            }
+        }
+        
+        *(state->exit_Manes_To_Other_states) = validTransitions;
+    }
+
+    cout << "\n=== Summary of Trap State Removal ===\n";
+    if (!trapStates.empty()) {
+        cout << "Found " << trapStates.size() << " trap state(s):" << endl;
+        for (State* trapState : trapStates) {
+            cout << "- " << trapState->statename;
+            if (trapState->finalState) cout << " (Was Final State)";
+            if (trapState->startState) cout << " (Was Start State)";
+            cout << endl;
+        }
+    } else {
+        cout << "No trap states found in the DFA." << endl;
+    }
+    cout << "\n=== Trap State Removal Complete ===\n" << endl;
 }
 
 void DFA_SHow_Stucture() {
@@ -219,13 +345,49 @@ void Choosing_Mane_And_NextState(State& state) {
         this_mane.exitstate = &(*stateIt);
         state.exit_Manes_To_Other_states->push_back(this_mane);
         maneList_for_thisState.erase(maneIt);
-        
+
         if (state.startState) {
             isStartStateCheckedforFirstTime = false;
         }
     }
 }
 
+void DFA_SHow_Stucture(State* state, list<State*> visited) {
+    if (!state) {
+        cout << "\nError: Invalid state pointer";
+        return;
+    }
+
+    if (find(visited.begin(), visited.end(), state) != visited.end()) {
+        cout << " -> " << state->statename << " (cycle detected)";
+        return;
+    }
+    visited.push_back(state);
+
+    cout << "\n" << string(visited.size() * 2, ' ') << "State: " << state->statename;
+    if (state->startState) cout << " (Start)";
+    if (state->finalState) cout << " (Final)";
+
+    if (!state->exit_Manes_To_Other_states) {
+        cout << "\n" << string(visited.size() * 2, ' ') << "Error: No transition list";
+        return;
+    }
+
+    if (state->exit_Manes_To_Other_states->empty()) {
+        cout << "\n" << string(visited.size() * 2, ' ') << "No outgoing transitions";
+        return;
+    }
+
+    for (const Mane& mane : *(state->exit_Manes_To_Other_states)) {
+        cout << "\n" << string(visited.size() * 2, ' ') 
+             << "├─[" << mane.name << "]─> " << mane.exitstate->statename;
+        DFA_SHow_Stucture(mane.exitstate, visited);
+    }
+}
+
+void DFA_TO_ReducedDFA(State* state) {
+
+}
 
 void cleanup() {
     for (State& state : stateList) {
