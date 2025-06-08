@@ -400,181 +400,6 @@ void DFA_SHow_Stucture(State *state, list<State *> visited) {
     }
 }
 
-void Create_Minimized_DFA(const list<pair<string, string>>& equivalent_pairs) {
-    if (equivalent_pairs.empty()) {
-        cout << "\nNo equivalent states found. The DFA is already minimal." << endl;
-        return;
-    }
-
-    cout << "\n=== Creating Minimized DFA ===" << endl;
-
-    // Create sets of equivalent states
-    list<list<string>> equivalent_groups;
-    list<string> processed_states;
-
-    // Group equivalent states together
-    for (const auto& pair : equivalent_pairs) {
-        bool found = false;
-        for (auto& group : equivalent_groups) {
-            if (find(group.begin(), group.end(), pair.first) != group.end() ||
-                find(group.begin(), group.end(), pair.second) != group.end()) {
-                // Add both states to the group if not already present
-                if (find(group.begin(), group.end(), pair.first) == group.end())
-                    group.push_back(pair.first);
-                if (find(group.begin(), group.end(), pair.second) == group.end())
-                    group.push_back(pair.second);
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            // Create new group
-            list<string> new_group = {pair.first, pair.second};
-            equivalent_groups.push_back(new_group);
-        }
-        processed_states.push_back(pair.first);
-        processed_states.push_back(pair.second);
-    }
-
-    // Create new states for each group and standalone states
-    list<State> minimized_states;
-
-    // First, add grouped states
-    for (const auto& group : equivalent_groups) {
-        State new_state;
-        string combined_name;
-        bool is_start = false;
-        bool is_final = false;
-
-        // Combine names and check properties
-        for (const auto& state_name : group) {
-            if (!combined_name.empty()) combined_name += "_";
-            combined_name += state_name;
-
-            // Find original state
-            auto orig_state = find_if(stateList.begin(), stateList.end(),
-                [&state_name](const State& s) { return s.statename == state_name; });
-
-            if (orig_state->startState) is_start = true;
-            if (orig_state->finalState) is_final = true;
-        }
-
-        new_state.statename = combined_name;
-        new_state.startState = is_start;
-        new_state.finalState = is_final;
-        new_state.exit_Manes_To_Other_states = new list<Mane>();
-
-        // Take transitions from first state in group (they're equivalent, so any state's transitions work)
-        auto first_state = find_if(stateList.begin(), stateList.end(),
-            [&group](const State& s) { return s.statename == group.front(); });
-
-        // Copy transitions, updating destination states if needed
-        for (const Mane& old_mane : *(first_state->exit_Manes_To_Other_states)) {
-            Mane new_mane = old_mane;
-            new_mane.enteredstate = &new_state;
-
-            // Update exit state if it's part of a group
-            string exit_name = old_mane.exitstate->statename;
-            for (const auto& eq_group : equivalent_groups) {
-                if (find(eq_group.begin(), eq_group.end(), exit_name) != eq_group.end()) {
-                    // Find or create combined state
-                    string combined_exit_name;
-                    for (const auto& s : eq_group) {
-                        if (!combined_exit_name.empty()) combined_exit_name += "_";
-                        combined_exit_name += s;
-                    }
-                    exit_name = combined_exit_name;
-                    break;
-                }
-            }
-
-            // Find or create the exit state
-            auto exit_state = find_if(minimized_states.begin(), minimized_states.end(),
-                [&exit_name](const State& s) { return s.statename == exit_name; });
-
-            if (exit_state == minimized_states.end()) {
-                // Create new state if it doesn't exist yet
-                State new_exit_state;
-                new_exit_state.statename = exit_name;
-                new_exit_state.exit_Manes_To_Other_states = new list<Mane>();
-
-                // Find original state to copy properties
-                auto orig_exit = find_if(stateList.begin(), stateList.end(),
-                    [&old_mane](const State& s) { return s.statename == old_mane.exitstate->statename; });
-
-                new_exit_state.startState = orig_exit->startState;
-                new_exit_state.finalState = orig_exit->finalState;
-
-                minimized_states.push_back(new_exit_state);
-                exit_state = --minimized_states.end();
-            }
-
-            new_mane.exitstate = &(*exit_state);
-            new_state.exit_Manes_To_Other_states->push_back(new_mane);
-        }
-
-        minimized_states.push_back(new_state);
-    }
-
-    // Add remaining states that weren't combined
-    for (const auto& old_state : stateList) {
-        if (find(processed_states.begin(), processed_states.end(), old_state.statename) == processed_states.end()) {
-            State new_state = old_state;
-            new_state.exit_Manes_To_Other_states = new list<Mane>();
-
-            // Copy transitions, updating destination states if needed
-            for (const Mane& old_mane : *(old_state.exit_Manes_To_Other_states)) {
-                Mane new_mane = old_mane;
-                new_mane.enteredstate = &new_state;
-
-                // Update exit state if it's part of a group
-                string exit_name = old_mane.exitstate->statename;
-                for (const auto& group : equivalent_groups) {
-                    if (find(group.begin(), group.end(), exit_name) != group.end()) {
-                        string combined_name;
-                        for (const auto& s : group) {
-                            if (!combined_name.empty()) combined_name += "_";
-                            combined_name += s;
-                        }
-                        exit_name = combined_name;
-                        break;
-                    }
-                }
-
-                // Find or create the exit state
-                auto exit_state = find_if(minimized_states.begin(), minimized_states.end(),
-                    [&exit_name](const State& s) { return s.statename == exit_name; });
-
-                if (exit_state == minimized_states.end()) {
-                    State new_exit_state;
-                    new_exit_state.statename = exit_name;
-                    new_exit_state.exit_Manes_To_Other_states = new list<Mane>();
-                    new_exit_state.startState = old_mane.exitstate->startState;
-                    new_exit_state.finalState = old_mane.exitstate->finalState;
-                    minimized_states.push_back(new_exit_state);
-                    exit_state = --minimized_states.end();
-                }
-
-                new_mane.exitstate = &(*exit_state);
-                new_state.exit_Manes_To_Other_states->push_back(new_mane);
-            }
-
-            minimized_states.push_back(new_state);
-        }
-    }
-
-    // Clean up old states
-    for (State& state : stateList) {
-        delete state.exit_Manes_To_Other_states;
-    }
-
-    // Replace old DFA with minimized one
-    stateList = minimized_states;
-
-    cout << "\nMinimized DFA structure:" << endl;
-    DFA_SHow_Stucture();
-}
-
 void DFA_TO_ReducedDFA() {
     list<pair<string, string>> allTople;
     list<pair<string, string>> deletedTople;
@@ -631,43 +456,43 @@ void DFA_TO_ReducedDFA() {
     bool changesMade;
     do {
         changesMade = false;
-        auto it = allTople.begin();
-        while (it != allTople.end()) {
-            // Find the actual states for this pair
-            auto state1 = find_if(stateList.begin(), stateList.end(),
-                [&it](const State &s) { return s.statename == it->first; });
-            auto state2 = find_if(stateList.begin(), stateList.end(),
-                [&it](const State &s) { return s.statename == it->second; });
+    auto it = allTople.begin();
+    while (it != allTople.end()) {
+        // Find the actual states for this pair
+        auto state1 = find_if(stateList.begin(), stateList.end(),
+            [&it](const State &s) { return s.statename == it->first; });
+        auto state2 = find_if(stateList.begin(), stateList.end(),
+            [&it](const State &s) { return s.statename == it->second; });
 
-            bool shouldDelete = false;
+        bool shouldDelete = false;
 
             // Check if both states have the same mane transitions
-            for (const string &mane : maneList) {
-                State* nextState1 = nullptr;
-                State* nextState2 = nullptr;
-                bool hasTransition1 = false;
-                bool hasTransition2 = false;
+        for (const string &mane : maneList) {
+            State* nextState1 = nullptr;
+            State* nextState2 = nullptr;
+            bool hasTransition1 = false;
+            bool hasTransition2 = false;
 
-                // Find where state1 goes with this mane
-                for (const Mane &transition : *(state1->exit_Manes_To_Other_states)) {
-                    if (transition.name == mane) {
-                        nextState1 = transition.exitstate;
-                        hasTransition1 = true;
-                        break;
-                    }
+            // Find where state1 goes with this mane
+            for (const Mane &transition : *(state1->exit_Manes_To_Other_states)) {
+                if (transition.name == mane) {
+                    nextState1 = transition.exitstate;
+                    hasTransition1 = true;
+                    break;
                 }
+            }
 
-                // Find where state2 goes with this mane
-                for (const Mane &transition : *(state2->exit_Manes_To_Other_states)) {
-                    if (transition.name == mane) {
-                        nextState2 = transition.exitstate;
-                        hasTransition2 = true;
-                        break;
-                    }
+            // Find where state2 goes with this mane
+            for (const Mane &transition : *(state2->exit_Manes_To_Other_states)) {
+                if (transition.name == mane) {
+                    nextState2 = transition.exitstate;
+                    hasTransition2 = true;
+                    break;
                 }
+            }
 
                 // If both states have transitions for this mane
-                if (hasTransition1 && hasTransition2) {
+            if (hasTransition1 && hasTransition2) {
                     // Create pair from destination states (in correct order)
                     pair<string, string> destPair;
                     if (nextState1->statename < nextState2->statename) {
@@ -682,18 +507,18 @@ void DFA_TO_ReducedDFA() {
                         cout << "\nPair " << it->first << it->second << " leads to deleted pair "
                              << destPair.first << destPair.second << " with mane " << mane << endl;
                         break;
-                    }
                 }
             }
-
-            if (shouldDelete) {
-                deletedTople.push_back(*it);
-                it = allTople.erase(it);
-                changesMade = true;
-            } else {
-                ++it;
-            }
         }
+
+        if (shouldDelete) {
+            deletedTople.push_back(*it);
+            it = allTople.erase(it);
+                changesMade = true;
+        } else {
+            ++it;
+        }
+    }
     } while (changesMade);
 
     // Show results after mane transition checking
@@ -709,9 +534,6 @@ void DFA_TO_ReducedDFA() {
         cout << pair.first << pair.second << " ";
     }
     cout << endl;
-
-    // Create minimized DFA
-    Create_Minimized_DFA(allTople);
 }
 
 void cleanup() {
