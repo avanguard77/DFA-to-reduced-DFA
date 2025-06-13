@@ -2,8 +2,32 @@
 #include <list>
 #include <algorithm>
 #include <ranges>
+#include <vector>
+#include <map>
+#include <set>
+#include <numeric>
+#include <functional> // For std::function, if needed, though not directly by DSU usually
+
 struct Mane;
 using namespace std;
+
+// DSU Data Structures
+map<string, string> parent;
+
+// DSU Find operation
+string find_set(string s) {
+    if (parent[s] == s)
+        return s;
+    return parent[s] = find_set(parent[s]);
+}
+
+// DSU Unite operation
+void unite_sets(string a, string b) {
+    a = find_set(a);
+    b = find_set(b);
+    if (a != b)
+        parent[b] = a;
+}
 
 struct State {
     string statename;
@@ -39,7 +63,161 @@ void InputGetter_State_Mane();
 
 void DFA_TO_ReducedDFA();
 
-void Create_Minimized_DFA(const list<pair<string, string>>& equivalent_pairs);
+// Forward declaration for helper function if its definition is after Create_Minimized_DFA
+State* find_state_in_list_helper(list<State>& states, const string& name);
+
+void Create_Minimized_DFA(const list<pair<string, string>>& equivalent_pairs) {
+    // 1. DSU for Grouping
+    parent.clear(); // Clear any previous DSU states
+    for (const auto& state_obj : stateList) {
+        parent[state_obj.statename] = state_obj.statename;
+    }
+
+    for (const auto& eq_pair : equivalent_pairs) {
+        unite_sets(eq_pair.first, eq_pair.second);
+    }
+
+    // 2. Map Representatives to Members
+    map<string, list<State*>> representative_to_class_members;
+    list<State*> original_state_pointers; // To keep track of original state pointers
+
+    // Need to iterate through the global stateList by reference to get valid pointers
+    for (State& original_state_ref : stateList) {
+        original_state_pointers.push_back(&original_state_ref);
+    }
+
+    for (State* original_state_ptr : original_state_pointers) {
+        string rep = find_set(original_state_ptr->statename);
+        representative_to_class_members[rep].push_back(original_state_ptr);
+    }
+
+    // 3. Create Temporary New States
+    list<State> temp_new_states;
+    map<string, string> rep_to_new_name_map;
+
+    for (auto const& [rep_name, members_list] : representative_to_class_members) {
+        State new_state;
+        string generated_name;
+        if (members_list.size() == 1) {
+            generated_name = members_list.front()->statename;
+        } else {
+            list<string> member_names;
+            for (State* member_state : members_list) {
+                member_names.push_back(member_state->statename);
+            }
+            member_names.sort(); // Sort names for consistent naming
+            generated_name = accumulate(member_names.begin(), member_names.end(), string(""),
+                                      [](const string& a, const string& b) {
+                                          return a.empty() ? b : a + "_" + b;
+                                      });
+        }
+        new_state.statename = generated_name;
+        rep_to_new_name_map[rep_name] = generated_name;
+
+        new_state.startState = false;
+        new_state.finalState = false;
+        for (State* member_state : members_list) {
+            if (member_state->startState) {
+                new_state.startState = true;
+            }
+            if (member_state->finalState) {
+                new_state.finalState = true;
+            }
+        }
+        new_state.exit_Manes_To_Other_states = new list<Mane>();
+        temp_new_states.push_back(new_state); // State object is copied here
+    }
+
+    // 4. Cleanup Old stateList
+    for (State& old_state : stateList) { // Iterate by reference to modify
+        if (old_state.exit_Manes_To_Other_states != nullptr) {
+            delete old_state.exit_Manes_To_Other_states;
+            old_state.exit_Manes_To_Other_states = nullptr;
+        }
+    }
+    stateList.clear();
+
+    // 5. Set New Global stateList
+    stateList = temp_new_states; // temp_new_states are copied into stateList
+
+    // 6. Populate Transitions for New States
+    // Helper function find_state_in_new_globallist (can use a lambda or separate function)
+    // This lambda searches the current global stateList
+    auto find_state_in_current_global_list = [&](const string& name) -> State* {
+        for (State& s_ref : stateList) {
+            if (s_ref.statename == name) {
+                return &s_ref;
+            }
+        }
+        return nullptr;
+    };
+
+    // We need to re-iterate through the original structure to build new transitions.
+    // The representative_to_class_members map still holds pointers to original states,
+    // which is fine for accessing their transition information.
+
+    for (auto const& [rep_name, members_list] : representative_to_class_members) {
+        if (members_list.empty()) continue;
+
+        string new_source_name = rep_to_new_name_map[rep_name];
+        State* new_source_state = find_state_in_current_global_list(new_source_name);
+
+        if (!new_source_state) {
+            cerr << "Error: New source state " << new_source_name << " not found in global list." << endl;
+            continue;
+        }
+
+        // Pick any original state from the class to read its transitions
+        State* original_state_from_class = members_list.front();
+        if (!original_state_from_class || !original_state_from_class->exit_Manes_To_Other_states) {
+            continue;
+        }
+
+        for (const Mane& old_mane : *(original_state_from_class->exit_Manes_To_Other_states)) {
+            if (!old_mane.exitstate) continue;
+
+            string original_destination_state_name = old_mane.exitstate->statename;
+            string dest_representative_name = find_set(original_destination_state_name); // DSU still has original names
+            string target_new_name = rep_to_new_name_map[dest_representative_name];
+            State* new_target_state = find_state_in_current_global_list(target_new_name);
+
+            if (!new_target_state) {
+                cerr << "Error: New target state " << target_new_name << " not found for mane " << old_mane.name << endl;
+                continue;
+            }
+
+            // Check if transition already exists
+            bool transition_exists = false;
+            for (const Mane& existing_mane : *(new_source_state->exit_Manes_To_Other_states)) {
+                if (existing_mane.name == old_mane.name && existing_mane.exitstate == new_target_state) {
+                    transition_exists = true;
+                    break;
+                }
+            }
+
+            if (!transition_exists) {
+                Mane new_mane;
+                new_mane.name = old_mane.name;
+                new_mane.enteredstate = new_source_state; // Correctly points to the new state in the global list
+                new_mane.exitstate = new_target_state;   // Correctly points to the new state in the global list
+                new_source_state->exit_Manes_To_Other_states->push_back(new_mane);
+            }
+        }
+    }
+}
+
+
+// Definition of the helper function (if not a lambda inside Create_Minimized_DFA)
+// This helper can search any provided list of State objects.
+State* find_state_in_list_helper(list<State>& states, const string& name) {
+    for (State& s_ref : states) {
+        if (s_ref.statename == name) {
+            return &s_ref;
+        }
+    }
+    return nullptr;
+}
+
 
 int main() {
     InputGetter_State_Mane();
@@ -54,7 +232,38 @@ int main() {
         }
     }
 
-    DFA_TO_ReducedDFA();
+    DFA_TO_ReducedDFA(); // This function calculates equivalent_pairs
+
+    // Example: Call Create_Minimized_DFA with the output of DFA_TO_ReducedDFA
+    // Assuming DFA_TO_ReducedDFA now returns or stores its result in a way that can be passed here.
+    // For now, let's simulate having some equivalent pairs.
+    // This part needs to be connected with DFA_TO_ReducedDFA's actual output.
+    list<pair<string, string>> equivalent_pairs_from_reduction;
+    // Example: equivalent_pairs_from_reduction.push_back({"q1", "q2"});
+    // equivalent_pairs_from_reduction.push_back({"q3", "q4"});
+
+    // The actual equivalent_pairs should be populated by DFA_TO_ReducedDFA()
+    // For testing purposes, you might need to modify DFA_TO_ReducedDFA to return these pairs
+    // or store them in a global/accessible variable.
+    // Create_Minimized_DFA(equivalent_pairs_from_reduction);
+
+
+    // After minimization, show the structure again
+    cout << "\n\n=== DFA Structure After Minimization ===\n";
+    State *new_start_state = nullptr;
+    for (State &state_ref : stateList) { // Iterate by reference
+        if (state_ref.startState) {
+            new_start_state = &state_ref;
+            DFA_SHow_Stucture(new_start_state); // Show structure from the new start state
+            break;
+        }
+    }
+    if (!new_start_state && !stateList.empty()) {
+         DFA_SHow_Stucture(&stateList.front()); // Or show all components if no start state
+    } else if (stateList.empty()) {
+        cout << "DFA is empty after minimization." << endl;
+    }
+
 
     return 0;
 }
@@ -523,21 +732,28 @@ void DFA_TO_ReducedDFA() {
 
     // Show results after mane transition checking
     cout << "\nAfter checking mane transitions:" << endl;
-    cout << "Remaining pairs: ";
+    cout << "Remaining pairs (these are the equivalent pairs): ";
     for (const auto &pair: allTople) {
-        cout << pair.first << pair.second << " ";
+        cout << "(" << pair.first << ", " << pair.second << ") ";
     }
     cout << endl;
 
-    cout << "Deleted pairs: ";
+    cout << "Deleted pairs (these are distinguishable): ";
     for (const auto &pair: deletedTople) {
-        cout << pair.first << pair.second << " ";
+        cout << "(" << pair.first << ", " << pair.second << ") ";
     }
     cout << endl;
+
+    // Create_Minimized_DFA should be called with 'allTople' as equivalent_pairs
+    Create_Minimized_DFA(allTople);
 }
 
 void cleanup() {
     for (State &state: stateList) {
-        delete state.exit_Manes_To_Other_states;
+        if (state.exit_Manes_To_Other_states != nullptr) {
+            delete state.exit_Manes_To_Other_states;
+            state.exit_Manes_To_Other_states = nullptr; // Good practice
+        }
     }
+    stateList.clear(); // Clear the list itself
 }
