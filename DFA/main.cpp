@@ -63,159 +63,227 @@ void InputGetter_State_Mane();
 
 void DFA_TO_ReducedDFA();
 
-// Forward declaration for helper function if its definition is after Create_Minimized_DFA
-State* find_state_in_list_helper(list<State>& states, const string& name);
+// The global helper function find_state_in_list_helper might be unused if local lambdas cover all needs.
+// If it was defined as:
+// State* find_state_in_list_helper(list<State>& states, const string& name) {
+//     for (State& s_ref : states) {
+//         if (s_ref.statename == name) {
+//             return &s_ref;
+//         }
+//     }
+//     return nullptr;
+// }
+// It can be kept if other functions use it, or removed if not.
 
 void Create_Minimized_DFA(const list<pair<string, string>>& equivalent_pairs) {
-    // 1. DSU for Grouping
-    parent.clear(); // Clear any previous DSU states
-    for (const auto& state_obj : stateList) {
+    // === Current global stateList holds the original states at the beginning of this function ===
+
+    // 1. DSU for Grouping (Uses original global stateList)
+    parent.clear(); // Global DSU parent map, stores original state names
+    for (const auto& state_obj : stateList) { // stateList contains original State objects
         parent[state_obj.statename] = state_obj.statename;
     }
-
-    for (const auto& eq_pair : equivalent_pairs) {
+    for (const auto& eq_pair : equivalent_pairs) { // eq_pair contains pairs of original state names
         unite_sets(eq_pair.first, eq_pair.second);
     }
 
-    // 2. Map Representatives to Members
-    map<string, list<State*>> representative_to_class_members;
-    list<State*> original_state_pointers; // To keep track of original state pointers
-
-    // Need to iterate through the global stateList by reference to get valid pointers
+    // 2. Map Representatives to Original Member State Pointers
+    map<string, list<State*>> representative_to_original_members;
+    list<State*> original_state_pointers;
+    // Store pointers to original states before stateList is modified/cleared
     for (State& original_state_ref : stateList) {
         original_state_pointers.push_back(&original_state_ref);
     }
-
     for (State* original_state_ptr : original_state_pointers) {
+        // find_set uses original state names and the global 'parent' map
         string rep = find_set(original_state_ptr->statename);
-        representative_to_class_members[rep].push_back(original_state_ptr);
+        representative_to_original_members[rep].push_back(original_state_ptr);
     }
 
-    // 3. Create Temporary New States
-    list<State> temp_new_states;
-    map<string, string> rep_to_new_name_map;
+    // 3. Create Temporary New States (in temp_new_states list)
+    list<State> temp_new_states; // This will hold the newly formed State objects
+    map<string, string> rep_to_new_name_map; // Maps original representative name to new state name
 
-    for (auto const& [rep_name, members_list] : representative_to_class_members) {
-        State new_state;
+    for (auto const& [original_rep_name, members_list_of_original_ptrs] : representative_to_original_members) {
+        State new_state_obj; // The new State object we are constructing
         string generated_name;
-        if (members_list.size() == 1) {
-            generated_name = members_list.front()->statename;
-        } else {
-            list<string> member_names;
-            for (State* member_state : members_list) {
-                member_names.push_back(member_state->statename);
+
+        bool is_single_true_unmerged = false;
+        if (members_list_of_original_ptrs.size() == 1) {
+            // A class of one. If its representative is itself, it's an unmerged state.
+            if (members_list_of_original_ptrs.front()->statename == original_rep_name) {
+                 is_single_true_unmerged = true;
             }
-            member_names.sort(); // Sort names for consistent naming
-            generated_name = accumulate(member_names.begin(), member_names.end(), string(""),
+        }
+
+        if (is_single_true_unmerged) {
+            generated_name = original_rep_name; // Keep original name
+        } else {
+            // Merged state: concatenate sorted names of original members
+            list<string> member_names_for_new_name;
+            for (State* member_state_ptr : members_list_of_original_ptrs) {
+                member_names_for_new_name.push_back(member_state_ptr->statename);
+            }
+            member_names_for_new_name.sort();
+            generated_name = accumulate(member_names_for_new_name.begin(), member_names_for_new_name.end(), string(""),
                                       [](const string& a, const string& b) {
                                           return a.empty() ? b : a + "_" + b;
                                       });
         }
-        new_state.statename = generated_name;
-        rep_to_new_name_map[rep_name] = generated_name;
+        new_state_obj.statename = generated_name;
+        rep_to_new_name_map[original_rep_name] = generated_name; // Map original representative to the new state's name
 
-        new_state.startState = false;
-        new_state.finalState = false;
-        for (State* member_state : members_list) {
-            if (member_state->startState) {
-                new_state.startState = true;
+        new_state_obj.startState = false;
+        new_state_obj.finalState = false;
+        for (State* member_state_ptr : members_list_of_original_ptrs) { // member_state_ptr points to an original state object
+            if (member_state_ptr->startState) {
+                new_state_obj.startState = true;
             }
-            if (member_state->finalState) {
-                new_state.finalState = true;
+            if (member_state_ptr->finalState) {
+                new_state_obj.finalState = true;
             }
         }
-        new_state.exit_Manes_To_Other_states = new list<Mane>();
-        temp_new_states.push_back(new_state); // State object is copied here
+        new_state_obj.exit_Manes_To_Other_states = new list<Mane>(); // Allocate new list for transitions
+        temp_new_states.push_back(new_state_obj); // The new_state_obj is COPIED into temp_new_states
     }
 
-    // 4. Cleanup Old stateList
-    for (State& old_state : stateList) { // Iterate by reference to modify
-        if (old_state.exit_Manes_To_Other_states != nullptr) {
-            delete old_state.exit_Manes_To_Other_states;
-            old_state.exit_Manes_To_Other_states = nullptr;
-        }
-    }
-    stateList.clear();
-
-    // 5. Set New Global stateList
-    stateList = temp_new_states; // temp_new_states are copied into stateList
-
-    // 6. Populate Transitions for New States
-    // Helper function find_state_in_new_globallist (can use a lambda or separate function)
-    // This lambda searches the current global stateList
-    auto find_state_in_current_global_list = [&](const string& name) -> State* {
-        for (State& s_ref : stateList) {
+    // Helper lambda to find states within a specific list of State objects (e.g., temp_new_states)
+    auto find_state_in_given_list = [&](const string& name, list<State>& states_to_search) -> State* {
+        for (State& s_ref : states_to_search) {
             if (s_ref.statename == name) {
-                return &s_ref;
+                return &s_ref; // Returns pointer to object within states_to_search
             }
         }
         return nullptr;
     };
 
-    // We need to re-iterate through the original structure to build new transitions.
-    // The representative_to_class_members map still holds pointers to original states,
-    // which is fine for accessing their transition information.
+    // 4. Populate Transitions for states currently in `temp_new_states`
+    //    Uses:
+    //      - representative_to_original_members (contains State* to original states, whose transitions are still intact)
+    //      - rep_to_new_name_map (maps original representative name to the new state name)
+    //      - ::maneList (global list of all mane symbols)
+    //    Targets:
+    //      - Mane lists within State objects in `temp_new_states`.
+    //      - Pointers (enteredstate, exitstate) in these new Manes will point to State objects *within `temp_new_states`*.
+    for (auto const& [original_rep_name, original_members_list_ptrs] : representative_to_original_members) {
+        if (original_members_list_ptrs.empty()) continue;
 
-    for (auto const& [rep_name, members_list] : representative_to_class_members) {
-        if (members_list.empty()) continue;
+        string new_source_state_name = rep_to_new_name_map[original_rep_name];
+        State* new_source_state_in_temp = find_state_in_given_list(new_source_state_name, temp_new_states);
 
-        string new_source_name = rep_to_new_name_map[rep_name];
-        State* new_source_state = find_state_in_current_global_list(new_source_name);
-
-        if (!new_source_state) {
-            cerr << "Error: New source state " << new_source_name << " not found in global list." << endl;
+        if (!new_source_state_in_temp) {
+            cerr << "Critical Error during transition gen: Newly created source state '" << new_source_state_name << "' not found in temp_new_states list." << endl;
+            continue;
+        }
+        if (!new_source_state_in_temp->exit_Manes_To_Other_states) {
+            cerr << "Critical Error during transition gen: exit_Manes_To_Other_states is null for temp state '" << new_source_state_name << "'." << endl;
             continue;
         }
 
-        // Pick any original state from the class to read its transitions
-        State* original_state_from_class = members_list.front();
-        if (!original_state_from_class || !original_state_from_class->exit_Manes_To_Other_states) {
-            continue;
-        }
+        for (const string& current_mane_name : ::maneList) {
+            State* first_original_target_state_ptr = nullptr; // This will point to an ORIGINAL state object
 
-        for (const Mane& old_mane : *(original_state_from_class->exit_Manes_To_Other_states)) {
-            if (!old_mane.exitstate) continue;
+            for (State* original_member_state_ptr : original_members_list_ptrs) {
+                // original_member_state_ptr points to an original state, whose exit_Manes_To_Other_states is still valid.
+                if (!original_member_state_ptr || !original_member_state_ptr->exit_Manes_To_Other_states) continue;
 
-            string original_destination_state_name = old_mane.exitstate->statename;
-            string dest_representative_name = find_set(original_destination_state_name); // DSU still has original names
-            string target_new_name = rep_to_new_name_map[dest_representative_name];
-            State* new_target_state = find_state_in_current_global_list(target_new_name);
-
-            if (!new_target_state) {
-                cerr << "Error: New target state " << target_new_name << " not found for mane " << old_mane.name << endl;
-                continue;
+                for (const Mane& old_mane_transition : *(original_member_state_ptr->exit_Manes_To_Other_states)) {
+                    if (old_mane_transition.name == current_mane_name) {
+                        if (old_mane_transition.exitstate) { // This exitstate points to an ORIGINAL state
+                           first_original_target_state_ptr = old_mane_transition.exitstate;
+                           break; // Found a transition for current_mane_name from one of the original members
+                        }
+                    }
+                }
+                if (first_original_target_state_ptr) break; // Move to next mane_name
             }
 
-            // Check if transition already exists
-            bool transition_exists = false;
-            for (const Mane& existing_mane : *(new_source_state->exit_Manes_To_Other_states)) {
-                if (existing_mane.name == old_mane.name && existing_mane.exitstate == new_target_state) {
-                    transition_exists = true;
-                    break;
+            if (first_original_target_state_ptr) { // If a transition was found for current_mane_name
+                string original_target_name = first_original_target_state_ptr->statename;
+                // Find representative of this original target state's equivalence class
+                string target_original_rep_name = find_set(original_target_name);
+                // Get the new name for this target equivalence class
+                string new_target_state_name = rep_to_new_name_map[target_original_rep_name];
+
+                State* new_target_state_in_temp = find_state_in_given_list(new_target_state_name, temp_new_states);
+
+                if (!new_target_state_in_temp) {
+                    cerr << "Error during transition gen: New target state '" << new_target_state_name
+                         << "' not found in temp_new_states for mane '" << current_mane_name
+                         << "' from new source state '" << new_source_state_name << "'." << endl;
+                    continue;
+                }
+
+                // Check if this exact transition (mane name to target state in temp_new_states) already added
+                bool transition_exists = false;
+                for (const Mane& existing_mane : *(new_source_state_in_temp->exit_Manes_To_Other_states)) {
+                    if (existing_mane.name == current_mane_name && existing_mane.exitstate == new_target_state_in_temp) {
+                        transition_exists = true;
+                        break;
+                    }
+                }
+
+                if (!transition_exists) {
+                    Mane new_mane_obj;
+                    new_mane_obj.name = current_mane_name;
+                    new_mane_obj.enteredstate = new_source_state_in_temp; // Points to a State obj within temp_new_states
+                    new_mane_obj.exitstate = new_target_state_in_temp;   // Points to a State obj within temp_new_states
+                    new_source_state_in_temp->exit_Manes_To_Other_states->push_back(new_mane_obj);
                 }
             }
+        }
+    }
 
-            if (!transition_exists) {
-                Mane new_mane;
-                new_mane.name = old_mane.name;
-                new_mane.enteredstate = new_source_state; // Correctly points to the new state in the global list
-                new_mane.exitstate = new_target_state;   // Correctly points to the new state in the global list
-                new_source_state->exit_Manes_To_Other_states->push_back(new_mane);
+    // 5. Cleanup Mane Lists of Original States (which are currently in the global stateList)
+    //    The original State objects themselves will be cleared from global stateList next.
+    for (State& old_state : stateList) { // stateList here is still the original list of states
+        if (old_state.exit_Manes_To_Other_states != nullptr) {
+            delete old_state.exit_Manes_To_Other_states;
+            old_state.exit_Manes_To_Other_states = nullptr;
+        }
+    }
+    stateList.clear(); // Empties the global stateList of its original State objects
+
+    // 6. Set New Global stateList by COPYING State objects from temp_new_states
+    stateList = temp_new_states;
+    // CRITICAL: At this point, State objects have been COPIED from temp_new_states to global stateList.
+    // The Mane pointers (enteredstate, exitstate) inside the new global stateList are now STALE.
+    // They point to memory locations of State objects that were in temp_new_states (which will soon be out of scope).
+
+    // 7. Re-wire Pointers in the new global stateList to point correctly within itself.
+    auto find_state_in_final_global_list = [&](const string& name) -> State* {
+        for (State& s_ref : stateList) { // stateList is NOW the new global list
+            if (s_ref.statename == name) {
+                return &s_ref; // Returns pointer to object within the final global stateList
+            }
+        }
+        return nullptr;
+    };
+
+    for (State& final_state_ref : stateList) { // Iterate by reference through the new global stateList
+        if (final_state_ref.exit_Manes_To_Other_states) {
+            for (Mane& mane_to_fix : *(final_state_ref.exit_Manes_To_Other_states)) {
+                // The 'statename' string within the pointed-to State object was copied correctly during the object copy.
+                // We use this name to find the new memory location of that state in the final global stateList.
+                if (mane_to_fix.enteredstate) {
+                    string entered_name = mane_to_fix.enteredstate->statename;
+                    mane_to_fix.enteredstate = find_state_in_final_global_list(entered_name);
+                     if (!mane_to_fix.enteredstate) {
+                        cerr << "Rewire Error: Entered state '" << entered_name << "' (for source " << final_state_ref.statename << " via mane " << mane_to_fix.name << ") not found in final list." << endl;
+                    }
+                }
+                if (mane_to_fix.exitstate) {
+                    string exit_name = mane_to_fix.exitstate->statename;
+                    mane_to_fix.exitstate = find_state_in_final_global_list(exit_name);
+                    if (!mane_to_fix.exitstate) {
+                        cerr << "Rewire Error: Exit state '" << exit_name << "' (for source " << final_state_ref.statename << " via mane " << mane_to_fix.name << ") not found in final list." << endl;
+                    }
+                }
             }
         }
     }
-}
-
-
-// Definition of the helper function (if not a lambda inside Create_Minimized_DFA)
-// This helper can search any provided list of State objects.
-State* find_state_in_list_helper(list<State>& states, const string& name) {
-    for (State& s_ref : states) {
-        if (s_ref.statename == name) {
-            return &s_ref;
-        }
-    }
-    return nullptr;
+    // temp_new_states (local list) goes out of scope here, its memory is reclaimed.
+    // Pointers in the global stateList should now be valid and point within itself.
 }
 
 
@@ -224,11 +292,12 @@ int main() {
     Connect_State_Mane();
 
     DFA_Delete_Trap_UnuseableState();
-    State *startState;
-    for (State state: stateList) {
+    State *startState = nullptr; // Ensure startState is initialized
+    for (State& state : stateList) { // Use reference here
         if (state.startState) {
             startState = &state;
             DFA_SHow_Stucture(startState);
+            // break; // Optional: if there's only one start state, can break early
         }
     }
 
@@ -259,12 +328,16 @@ int main() {
         }
     }
     if (!new_start_state && !stateList.empty()) {
-         DFA_SHow_Stucture(&stateList.front()); // Or show all components if no start state
+         // If no start state, show all components, or just the first state.
+         // For robust display, one might iterate all states or show multiple components if disjoint.
+         // DFA_SHow_Stucture(&stateList.front()); // Example: Show from the first if no explicit start
+         cout << "Minimized DFA has no designated start state. Showing all states:" << endl;
+         DFA_SHow_Stucture(); // Call the version that prints all states if available & appropriate
     } else if (stateList.empty()) {
         cout << "DFA is empty after minimization." << endl;
     }
 
-
+    cleanup(); // Add this line
     return 0;
 }
 
@@ -369,21 +442,34 @@ void DFA_Delete_Trap_UnuseableState() {
     cout << "\n=== Summary of Trap State Removal ===\n";
     if (!trapStates.empty()) {
         cout << "Found " << trapStates.size() << " trap state(s):" << endl;
-        for (State *trapState: trapStates) {
-            cout << "- " << trapState->statename;
-            if (trapState->finalState) cout << " (Was Final State)";
-            if (trapState->startState) cout << " (Was Start State)";
+        for (State *trapState_ptr : trapStates) { // trapStates contains State* pointers
+            cout << "- " << trapState_ptr->statename;
+            if (trapState_ptr->finalState) cout << " (Was Final State)";
+            if (trapState_ptr->startState) cout << " (Was Start State)";
             cout << endl;
+
+            // Deallocate the Mane list for this trap state BEFORE it's removed from stateList
+            if (trapState_ptr->exit_Manes_To_Other_states != nullptr) {
+                delete trapState_ptr->exit_Manes_To_Other_states;
+                trapState_ptr->exit_Manes_To_Other_states = nullptr; // Good practice
+            }
         }
 
-        // Remove trap states from stateList
-        stateList.remove_if([&trapStates](const State& state) {
-            return std::find_if(trapStates.begin(), trapStates.end(),
-                [&state](const State* trap) { return trap->statename == state.statename; }
-            ) != trapStates.end();
+        // Now, remove trap states from stateList
+        // The predicate for remove_if now checks if a state in stateList corresponds to any of the trapState_ptr by statename
+        stateList.remove_if([&trapStates](const State& s_in_list) {
+            // Check if s_in_list.statename matches any statename in trapStates (list of State*)
+            return std::any_of(trapStates.begin(), trapStates.end(),
+                               [&s_in_list](const State* trap_ptr) {
+                                   // Ensure trap_ptr is not null before dereferencing, though it shouldn't be here.
+                                   if (trap_ptr) {
+                                       return trap_ptr->statename == s_in_list.statename;
+                                   }
+                                   return false;
+                               });
         });
 
-        cout << "\nTrap states have been removed from the DFA." << endl;
+        cout << "\nTrap states have been removed from the DFA and their resources deallocated." << endl;
     } else {
         cout << "No trap states found in the DFA." << endl;
     }
